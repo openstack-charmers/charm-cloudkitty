@@ -2,23 +2,31 @@
 
 ## Description
 
-TODO: Describe your charm in a few paragraphs of Markdown
+Cloudkitty charm - Openstack Rating as a Service
 
 ## Usage
 
-TODO: Provide high-level usage, such as required config or relations
+```
+juju deploy cloudkitty --channel edge
+juju relate cloudkitty keystone
+```
 
 
 ## Relations
 
-TODO: Provide any relations which are provided or required by your charm
-
-## OCI Images
-
-TODO: Include a link to the default image your charm uses
 
 ## Contributing
 
 Please see the [Juju SDK docs](https://juju.is/docs/sdk) for guidelines
 on enhancements to this charm following best practice guidelines, and
 `CONTRIBUTING.md` for developer guidance.
+
+# Bugs
+
+Please report bugs on [Launchpad][lp-bugs-charm-cloudkitty].
+
+For general charm questions refer to the [OpenStack Charm Guide][cg].
+
+<!-- LINKS -->
+[cg]: https://docs.openstack.org/charm-guide
+[lp-bugs-charm-cloudkitty]: https://bugs.launchpad.net/charm-cloudkitty/+filebug

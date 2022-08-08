@@ -9,3 +9,7 @@ tags:
   - openstack
 series:
   - focal
+
+requires:
+  identity-service:
+    interface: keystone
