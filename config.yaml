@@ -3,3 +3,15 @@ options:
     default: False
     description: Enable debugging.
     type: boolean
+  region:
+    type: string
+    default: RegionOne
+    description: OpenStack Region
+  db_name:
+    type: string
+    default: cloudkitty
+    description: Database name
+  db_user:
+    type: string
+    default: cloudkitty
+    description: Database user name

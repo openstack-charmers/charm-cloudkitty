@@ -13,3 +13,5 @@ series:
 requires:
   identity-service:
     interface: keystone
+  shared-db:
+    interface: mysql-shared
