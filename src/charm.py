@@ -27,7 +27,6 @@ from charmhelpers.contrib.openstack.ip import (
 )
 
 from charmhelpers.core.hookenv import (
-    config,
     relation_set
 )
 
@@ -60,6 +59,7 @@ class CharmCloudkittyCharm(ops_openstack.core.OSBaseCharm):
 
     CONFIG_FILE_OWNER = 'cloudkitty'
     CONFIG_FILE_GROUP = 'cloudkitty'
+    config_dir = '/etc/cloudkitty/'
 
     port = '8889'
     release = 'yoga'
@@ -93,8 +93,12 @@ class CharmCloudkittyCharm(ops_openstack.core.OSBaseCharm):
                                self._on_shared_db_relation_joined)
 
     @property
-    def host(self):
-        return resolve_address()  # TODO: support multiple bindings
+    def host(self) -> str:
+        return '127.0.0.1'
+
+    @property
+    def port(self) -> str:
+        return self.options.port
 
     @property
     def db_data(self):
@@ -130,8 +134,10 @@ class CharmCloudkittyCharm(ops_openstack.core.OSBaseCharm):
         super().on_install(event)
 
     def _on_config_changed(self, _):
-        if self.options.debug:
-            import ripdb; ripdb.set_trace()
+        self.options = CharmCloudkittyOptions(self)
+
+        # if self.options.debug:
+        #     import ripdb; ripdb.set_trace()
 
         templating.render(
             source='cloudkitty.conf',
@@ -139,7 +145,7 @@ class CharmCloudkittyCharm(ops_openstack.core.OSBaseCharm):
                 'templates/',
                 self.release
             ),
-            target='/etc/cloudkitty/cloudkitty.conf',
+            target=self.config_dir + 'cloudkitty.conf',
             context=self.build_context(),
             owner=self.CONFIG_FILE_OWNER,
             group=self.CONFIG_FILE_GROUP,

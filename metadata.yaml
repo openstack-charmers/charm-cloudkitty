@@ -9,6 +9,8 @@ tags:
   - openstack
 series:
   - focal
+extra-bindings:
+  public:
 
 requires:
   identity-service:
