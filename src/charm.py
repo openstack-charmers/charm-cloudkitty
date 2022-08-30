@@ -9,6 +9,7 @@ develop a new k8s charm using the Operator Framework:
 """
 
 import logging
+from pathlib import Path
 
 import ops_openstack.core
 
@@ -59,7 +60,7 @@ class CharmCloudkittyCharm(ops_openstack.core.OSBaseCharm):
 
     CONFIG_FILE_OWNER = 'cloudkitty'
     CONFIG_FILE_GROUP = 'cloudkitty'
-    config_dir = '/etc/cloudkitty/'
+    config_dir = '/etc/cloudkitty'
 
     port = '8889'
     release = 'yoga'
@@ -145,7 +146,7 @@ class CharmCloudkittyCharm(ops_openstack.core.OSBaseCharm):
                 'templates/',
                 self.release
             ),
-            target=self.config_dir + 'cloudkitty.conf',
+            target=Path(self.config_dir) / 'cloudkitty.conf',
             context=self.build_context(),
             owner=self.CONFIG_FILE_OWNER,
             group=self.CONFIG_FILE_GROUP,
