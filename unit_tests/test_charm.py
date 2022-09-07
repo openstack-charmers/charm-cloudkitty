@@ -3,6 +3,7 @@
 #
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
+import logging
 import unittest
 import sys
 import pwd
@@ -15,14 +16,27 @@ sys.path.append('src')  # noqa
 
 from pathlib import Path
 from unittest import mock
-from charm import CharmCloudkittyCharm
-from ops.testing import Harness
+import charm
 
+from ops.testing import Harness
+from charmhelpers.fetch import apt_install
+
+
+class TestCloudkittyCharm(charm.CloudkittyCharm):
+    """
+    Workaround until 'network-get' call gets mocked
+    See https://github.com/canonical/operator/issues/456
+    See https://github.com/canonical/operator/issues/222
+    """
+    @property
+    def host(self):
+        return '10.0.0.10'
 
 class TestCharm(unittest.TestCase):
     def setUp(self):
         super().setUp()
-        self.harness = Harness(CharmCloudkittyCharm)
+
+        self.harness = Harness(TestCloudkittyCharm)
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
@@ -35,11 +49,10 @@ class TestCharm(unittest.TestCase):
         self.harness.enable_hooks()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch("charm.CharmCloudkittyCharm.config_dir",
+            with mock.patch("charm.CloudkittyCharm.CONFIG_DIR",
                             new_callable=mock.PropertyMock,
-                            return_value=tmpdir):
-                temp_dir = Path(tmpdir)
-                fpath = temp_dir / 'cloudkitty.conf'
+                            return_value=Path(tmpdir)):
+                fpath = Path(tmpdir) / 'cloudkitty.conf'
 
                 self.harness.update_config({'debug': True})
 
@@ -51,24 +64,34 @@ class TestCharm(unittest.TestCase):
                     content = f.read()
                     self.assertIn('debug = True', content)
 
-    def test_on_install(self):
-        pass
+    # @mock.patch('charmhelpers.fetch.apt_install')
+    # @mock.patch('charmhelpers.fetch.apt_update')
+    # def test_on_install(self, apt_install, apt_update):
+    #     self.harness.charm.on_install(mock.Mock(auto_spec=True))
+    #     apt_update.assert_called()
+    #     apt_install.assert_called_with(['cloudkitty-api',
+    #         'cloudkitty-processor',
+    #         'cloudkitty-common',
+    #         'python3-cloudkitty'])
 
-    def test_keystone_relation(self):
+    def test_identity_service_relation(self):
+        self.harness.enable_hooks()
         rid = self.harness.add_relation('identity-service', 'keystone')
         self.harness.add_relation_unit(rid, 'keystone/0')
         self.harness.update_relation_data(
             rid,
             'keystone/0',
             {
-                'port': '5000',
-                'hostname': '10.0.0.1'
+                'auth_protocol': 'http',
+                'auth_host': '10.0.0.1',
+                'service_port': '5000',
+                'api_version': 'v3',
+                'service_user_name': 'test_user',
+                'service_password': 'test_password'
             }
         )
-        self.assertEqual(
-            self.harness.get_relation_data(rid, 'keystone/0'),
-            {
-                'port': '5000',
-                'hostname': '10.0.0.1'
-            }
-        )
+        import ripdb; ripdb.set_trace()
+
+    def test_database_relation(self):
+        rid = self.harness.add_relation('database', 'mysql')
+        self.harness.add_relation_unit(rid, 'mysql/0')

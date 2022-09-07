@@ -9,45 +9,39 @@ develop a new k8s charm using the Operator Framework:
 """
 
 import logging
+
 from pathlib import Path
 
 import ops_openstack.core
 
 from ops.framework import StoredState
 from ops.main import main
+
 from ops.model import (
-    ActiveStatus,
-    WaitingStatus
+    ActiveStatus
 )
 
 from charmhelpers.core import templating
 from charmhelpers.contrib.openstack import templating as os_templating
 
-from charmhelpers.contrib.openstack.ip import (
-    resolve_address
+from charms.openstack_libs.v0.keystone_requires import (
+    KeystoneRequires
 )
 
-from charmhelpers.core.hookenv import (
-    relation_set
+from charms.data_platform_libs.v0.database_requires import (
+    DatabaseRequires
 )
 
-from ops_openstack.adapters import (
-    ConfigurationAdapter,
-)
-
-from charms.sunbeam_keystone_operator.v0.identity_service import (
-    IdentityServiceRequires
+from charms.operator_libs_linux.v1.systemd import (
+    service_restart
 )
 
 logger = logging.getLogger(__name__)
 
 
-class CharmCloudkittyOptions(ConfigurationAdapter):
-    pass
-
-
-class CharmCloudkittyCharm(ops_openstack.core.OSBaseCharm):
+class CloudkittyCharm(ops_openstack.core.OSBaseCharm):
     """Charm the service."""
+    _stored = StoredState()
 
     PACKAGES = [
         'cloudkitty-api',
@@ -56,112 +50,109 @@ class CharmCloudkittyCharm(ops_openstack.core.OSBaseCharm):
         'python3-cloudkitty'
     ]
 
-    _stored = StoredState()
+    REQUIRED_RELATIONS = ['database', 'identity-service']
 
     CONFIG_FILE_OWNER = 'cloudkitty'
     CONFIG_FILE_GROUP = 'cloudkitty'
-    config_dir = '/etc/cloudkitty'
+    CONFIG_DIR = Path('/etc/cloudkitty')
+    CONFIG_FILE = 'cloudkitty.conf'
 
-    port = '8889'
+    SERVICES = ['cloudkitty-api', 'cloudkitty-processor']
+    RESTART_MAP = {
+        str(CONFIG_FILE): SERVICES
+    }
+
     release = 'yoga'
 
-    def __init__(self, *args):
-        super().__init__(*args)
+    def __init__(self, framework):
+        super().__init__(framework)
+        super().register_status_check(self.status_check)
 
-        self.options = CharmCloudkittyOptions(self)
+        self._address = None
+        self._database_name = 'cloudkitty'
 
-        base_url = 'http://' + self.host + ':' + self.port
-
-        self.identity_service = IdentityServiceRequires(
+        self.identity_service = KeystoneRequires(
             charm=self,
-            relation_name="identity-service",
-            service_endpoints={
-                "service_name": "cloudkitty",
-                "type": "rating",
-                "description": "Rating as a Service",
-                "internal_url": base_url,
-                "public_url": base_url,
-                "admin_url": base_url,
-            },
-            region=self.options.region
+            relation_name='identity-service',
+            service_endpoints = [{
+                'service_name': 'cloudkitty',
+                'internal_url': self.service_url('internal'),
+                'public_url': self.service_url('public'),
+                'admin_url': self.service_url('public')
+            }],
+            region = self.model.config['region']
         )
 
-        self.framework.observe(self.on.install,
-                               self._on_install)
+        self.database = DatabaseRequires(
+            charm=self,
+            relation_name='database',
+            database_name=self._database_name
+        )
+
         self.framework.observe(self.on.config_changed,
                                self._on_config_changed)
-        self.framework.observe(self.on.shared_db_relation_joined,
-                               self._on_shared_db_relation_joined)
+        self.framework.observe(self.identity_service.on.ready,
+                               self._on_identity_service_ready)
+        self.framework.observe(self.database.on.database_created,
+                               self._on_database_created)
+        self.framework.observe(self.on.restart_services_action,
+                               self._on_restart_services_action)
+
+    @property
+    def protocol(self):
+        return 'http'
 
     @property
     def host(self) -> str:
-        return '127.0.0.1'
+        if self._address is None:
+            binding = self.model.get_binding('public')
+            self._address = binding.network.bind_address
+        return str(self._address)
 
     @property
-    def port(self) -> str:
-        return self.options.port
+    def port(self) -> int:
+        return 8889
 
-    @property
-    def db_data(self):
-        relation = self.model.get_relation('shared-db')
-        if relation is None:
-            return None
-        unit = list(relation.units)[0]
-        data = relation.data[unit]
-        return {
-            'db': {
-                'user': self.options.db_user,
-                'password': data.get('password'),
-                'host': data.get('private-address'),
-                'name': self.options.db_name,
-            }
-        }
+    def service_url(self, _):
+        return f'{self.protocol}://{self.host}:{self.port}'
 
-    def build_context(self):
-        context = {}
-
-        db = self.db_data
-        if db is not None:
-            context.update(db)
-
-        context.update({
-            'options': self.options,
-            'identity_service': self.identity_service
-        })
-
-        return context
-
-    def _on_install(self, event):
-        super().on_install(event)
+    # Event handlers
+    def status_check(self):
+        return ActiveStatus()
 
     def _on_config_changed(self, _):
-        self.options = CharmCloudkittyOptions(self)
-
-        # if self.options.debug:
-        #     import ripdb; ripdb.set_trace()
-
+        # import ripdb; ripdb.set_trace()
         templating.render(
-            source='cloudkitty.conf',
+            source=self.CONFIG_FILE,
             template_loader=os_templating.get_loader(
                 'templates/',
                 self.release
             ),
-            target=Path(self.config_dir) / 'cloudkitty.conf',
-            context=self.build_context(),
+            target=self.CONFIG_DIR / self.CONFIG_FILE,
+            context={
+                'options': self.model.config,
+                'identity_service': self.identity_service,
+                'databases': self.database.fetch_relation_data(),
+            },
             owner=self.CONFIG_FILE_OWNER,
             group=self.CONFIG_FILE_GROUP,
             perms=0o640
         )
-        self.unit.status = ActiveStatus()
+        self._stored.is_started = True
+        self.update_status()
 
-    def _on_shared_db_relation_joined(self, _):
-        relation_set(
-            database=self.options.db_name,
-            username=self.options.db_user,
-            hostname=resolve_address()
-        )
-        self.unit.status = WaitingStatus()
+    def _on_identity_service_ready(self, _):
+        pass
+
+    def _on_database_created(self, _):
+        pass
+
+    def _on_restart_services_action(self, event):
+        event.log(f"restarting services {', '.join(self.SERVICES)}")
+        for service in self.SERVICES:
+            if service_restart(service):
+                event.fail(f"Failed to restart service: {service}")
 
 
 if __name__ == "__main__":
-    main(CharmCloudkittyCharm)
+    main(CloudkittyCharm)

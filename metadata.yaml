@@ -8,12 +8,12 @@ description: |
 tags:
   - openstack
 series:
-  - focal
+  - jammy
 extra-bindings:
   public:
 
 requires:
   identity-service:
     interface: keystone
-  shared-db:
-    interface: mysql-shared
+  database:
+    interface: mysql_client

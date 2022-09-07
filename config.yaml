@@ -7,15 +7,3 @@ options:
     type: string
     default: RegionOne
     description: OpenStack Region
-  db_name:
-    type: string
-    default: cloudkitty
-    description: Database name
-  db_user:
-    type: string
-    default: cloudkitty
-    description: Database user name
-  port:
-    type: string
-    default: "8889"
-    description: Cloudkitty API port
