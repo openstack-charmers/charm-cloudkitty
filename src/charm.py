@@ -74,13 +74,13 @@ class CloudkittyCharm(ops_openstack.core.OSBaseCharm):
         self.identity_service = KeystoneRequires(
             charm=self,
             relation_name='identity-service',
-            service_endpoints = [{
+            service_endpoints=[{
                 'service_name': 'cloudkitty',
                 'internal_url': self.service_url('internal'),
                 'public_url': self.service_url('public'),
                 'admin_url': self.service_url('public')
             }],
-            region = self.model.config['region']
+            region=self.model.config['region']
         )
 
         self.database = DatabaseRequires(
@@ -113,15 +113,14 @@ class CloudkittyCharm(ops_openstack.core.OSBaseCharm):
     def port(self) -> int:
         return 8889
 
-    def service_url(self, _):
+    def service_url(self, _) -> str:
         return f'{self.protocol}://{self.host}:{self.port}'
 
     # Event handlers
     def status_check(self):
         return ActiveStatus()
 
-    def _on_config_changed(self, _):
-        # import ripdb; ripdb.set_trace()
+    def _render_config(self):
         templating.render(
             source=self.CONFIG_FILE,
             template_loader=os_templating.get_loader(
@@ -141,11 +140,15 @@ class CloudkittyCharm(ops_openstack.core.OSBaseCharm):
         self._stored.is_started = True
         self.update_status()
 
+    def _on_config_changed(self, _):
+        # import ripdb; ripdb.set_trace()
+        self._render_config()
+
     def _on_identity_service_ready(self, _):
-        pass
+        self._render_config()
 
     def _on_database_created(self, _):
-        pass
+        self._render_config()
 
     def _on_restart_services_action(self, event):
         event.log(f"restarting services {', '.join(self.SERVICES)}")

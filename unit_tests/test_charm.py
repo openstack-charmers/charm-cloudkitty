@@ -3,23 +3,28 @@
 #
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
-import logging
-import unittest
+
 import sys
-import pwd
-import grp
-import os
-import tempfile
 
 sys.path.append('lib')  # noqa
 sys.path.append('src')  # noqa
 
-from pathlib import Path
-from unittest import mock
 import charm
+import unittest
+import pwd
+import grp
+import os
+
+from tempfile import TemporaryDirectory
+from pathlib import Path
+from unittest.mock import (
+    Mock,
+    PropertyMock,
+    patch
+)
 
 from ops.testing import Harness
-from charmhelpers.fetch import apt_install
+import ops_sunbeam.test_utils as test_utils
 
 
 class TestCloudkittyCharm(charm.CloudkittyCharm):
@@ -32,66 +37,71 @@ class TestCloudkittyCharm(charm.CloudkittyCharm):
     def host(self):
         return '10.0.0.10'
 
+
+tmpdir = Path(TemporaryDirectory().name)
+
+
 class TestCharm(unittest.TestCase):
     def setUp(self):
-        super().setUp()
-
         self.harness = Harness(TestCloudkittyCharm)
-        self.addCleanup(self.harness.cleanup)
-        self.harness.begin()
 
-    @mock.patch('os.fchown')
-    @mock.patch('os.chown')
-    @mock.patch('pwd.getpwnam', mock.Mock(auto_spec=True))
-    @mock.patch('grp.getgrnam', mock.Mock(auto_spec=True))
-    def test_config_changed(self, chown, fchown):
         self.harness.set_leader(True)
         self.harness.enable_hooks()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch("charm.CloudkittyCharm.CONFIG_DIR",
-                            new_callable=mock.PropertyMock,
-                            return_value=Path(tmpdir)):
-                fpath = Path(tmpdir) / 'cloudkitty.conf'
+        self.addCleanup(self.harness.cleanup)
+        self.harness.begin()
 
-                self.harness.update_config({'debug': True})
+    def test_on_install(self):
+        pass
 
-                # test config file got created
-                self.assertTrue(os.path.isfile(fpath))
+    @patch('charm.CloudkittyCharm.CONFIG_DIR',
+       new_callable=PropertyMock,
+       return_value=tmpdir)
+    @patch('os.fchown')
+    @patch('os.chown')
+    @patch('pwd.getpwnam', Mock(auto_spec=True))
+    @patch('grp.getgrnam', Mock(auto_spec=True))
+    def test_config_changed(self, fchown, chown, getpwnam):
+        self.harness.update_config({'debug': True})
 
-                # test file got rendered
-                with open(fpath) as f:
-                    content = f.read()
-                    self.assertIn('debug = True', content)
+        fpath = tmpdir / TestCloudkittyCharm.CONFIG_FILE
+        self.assertTrue(os.path.isfile(fpath))
 
-    # @mock.patch('charmhelpers.fetch.apt_install')
-    # @mock.patch('charmhelpers.fetch.apt_update')
-    # def test_on_install(self, apt_install, apt_update):
-    #     self.harness.charm.on_install(mock.Mock(auto_spec=True))
-    #     apt_update.assert_called()
-    #     apt_install.assert_called_with(['cloudkitty-api',
-    #         'cloudkitty-processor',
-    #         'cloudkitty-common',
-    #         'python3-cloudkitty'])
+        with open(fpath) as f:
+            content = f.read()
+            self.assertIn('debug = True', content)
 
-    def test_identity_service_relation(self):
-        self.harness.enable_hooks()
-        rid = self.harness.add_relation('identity-service', 'keystone')
-        self.harness.add_relation_unit(rid, 'keystone/0')
-        self.harness.update_relation_data(
-            rid,
-            'keystone/0',
-            {
-                'auth_protocol': 'http',
-                'auth_host': '10.0.0.1',
-                'service_port': '5000',
-                'api_version': 'v3',
-                'service_user_name': 'test_user',
-                'service_password': 'test_password'
-            }
-        )
-        import ripdb; ripdb.set_trace()
+    @patch('charm.CloudkittyCharm.CONFIG_DIR',
+       new_callable=PropertyMock,
+       return_value=tmpdir)
+    @patch('os.fchown')
+    @patch('os.chown')
+    @patch('pwd.getpwnam', Mock(auto_spec=True))
+    @patch('grp.getgrnam', Mock(auto_spec=True))
+    def test_identity_service_relation(self, fchown, chown, getpwnam):
+        # add identity-service relation
+        test_utils.add_complete_identity_relation(self.harness)
 
-    def test_database_relation(self):
+        fpath = tmpdir / TestCloudkittyCharm.CONFIG_FILE
+        self.assertTrue(os.path.isfile(fpath))
+
+        # test file got rendered
+        with open(fpath) as f:
+            content = f.read()
+            self.assertIn(
+                'identity_uri = http://keystone.local:5000/v3',
+                content)
+
+    @patch('charm.CloudkittyCharm.CONFIG_DIR',
+        new_callable=PropertyMock,
+        return_value=tmpdir)
+    @patch('os.fchown')
+    @patch('os.chown')
+    @patch('pwd.getpwnam', Mock(auto_spec=True))
+    @patch('grp.getgrnam', Mock(auto_spec=True))
+    def test_database_relation(self, fchown, chown, getpwnam):
         rid = self.harness.add_relation('database', 'mysql')
         self.harness.add_relation_unit(rid, 'mysql/0')
+        self.harness.update_relation_data(
+            rid, "mysql/0", {"ingress-address": "10.0.0.33"}
+        )
