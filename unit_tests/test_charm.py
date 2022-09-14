@@ -11,20 +11,12 @@ sys.path.append('src')  # noqa
 
 import charm
 import unittest
-import pwd
-import grp
-import os
+import test_utils
 
-from tempfile import TemporaryDirectory
-from pathlib import Path
 from unittest.mock import (
-    Mock,
-    PropertyMock,
     patch
 )
-
 from ops.testing import Harness
-import ops_sunbeam.test_utils as test_utils
 
 
 class TestCloudkittyCharm(charm.CloudkittyCharm):
@@ -38,70 +30,68 @@ class TestCloudkittyCharm(charm.CloudkittyCharm):
         return '10.0.0.10'
 
 
-tmpdir = Path(TemporaryDirectory().name)
-
-
 class TestCharm(unittest.TestCase):
     def setUp(self):
         self.harness = Harness(TestCloudkittyCharm)
 
         self.harness.set_leader(True)
-        self.harness.enable_hooks()
+        self.harness.disable_hooks()
 
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
-    def test_on_install(self):
-        pass
+    @patch('ops_openstack.core.apt_update')
+    @patch('ops_openstack.core.apt_install')
+    def test_on_install(self, _install, _update):
+        self.harness.charm.on_install('An event')
+        _update.assert_called_with(fatal=True)
+        _install.assert_called_with(TestCloudkittyCharm.PACKAGES, fatal=True)
 
-    @patch('charm.CloudkittyCharm.CONFIG_DIR',
-       new_callable=PropertyMock,
-       return_value=tmpdir)
-    @patch('os.fchown')
-    @patch('os.chown')
-    @patch('pwd.getpwnam', Mock(auto_spec=True))
-    @patch('grp.getgrnam', Mock(auto_spec=True))
-    def test_config_changed(self, fchown, chown, getpwnam):
+    @patch('charmhelpers.core.host.mkdir')
+    @patch('charmhelpers.core.host.write_file')
+    def test_config_changed(self, _write_file, _mkdir):
+        # change application config
         self.harness.update_config({'debug': True})
 
-        fpath = tmpdir / TestCloudkittyCharm.CONFIG_FILE
-        self.assertTrue(os.path.isfile(fpath))
+        # check rendered content
+        content = self.harness.charm._render_config()
+        self.assertIn('debug = True', content)
 
-        with open(fpath) as f:
-            content = f.read()
-            self.assertIn('debug = True', content)
-
-    @patch('charm.CloudkittyCharm.CONFIG_DIR',
-       new_callable=PropertyMock,
-       return_value=tmpdir)
-    @patch('os.fchown')
-    @patch('os.chown')
-    @patch('pwd.getpwnam', Mock(auto_spec=True))
-    @patch('grp.getgrnam', Mock(auto_spec=True))
-    def test_identity_service_relation(self, fchown, chown, getpwnam):
+    @patch('charmhelpers.core.host.mkdir')
+    @patch('charmhelpers.core.host.write_file')
+    def test_identity_service_relation(self, _write_file, _mkdir):
         # add identity-service relation
         test_utils.add_complete_identity_relation(self.harness)
 
-        fpath = tmpdir / TestCloudkittyCharm.CONFIG_FILE
-        self.assertTrue(os.path.isfile(fpath))
+        # check rendered content
+        expect_entries = [
+            'auth_protocol = http',
+            'auth_uri = http://keystone.local:5000/v3',
+            'auth_url = http://keystone.local:12345/v3',
+            'project_domain_name = servicedom',
+            'user_domain_name = servicedom',
+            'identity_uri = http://keystone.local:5000/v3',
+            'project_name = svcproj1',
+            'username = svcuser1',
+            'password = svcpass1',
+            'region_name = RegionOne'
+        ]
 
-        # test file got rendered
-        with open(fpath) as f:
-            content = f.read()
-            self.assertIn(
-                'identity_uri = http://keystone.local:5000/v3',
-                content)
+        content = self.harness.charm._render_config()
+        for entry in expect_entries:
+            self.assertIn(entry, content)
 
-    @patch('charm.CloudkittyCharm.CONFIG_DIR',
-        new_callable=PropertyMock,
-        return_value=tmpdir)
-    @patch('os.fchown')
-    @patch('os.chown')
-    @patch('pwd.getpwnam', Mock(auto_spec=True))
-    @patch('grp.getgrnam', Mock(auto_spec=True))
-    def test_database_relation(self, fchown, chown, getpwnam):
-        rid = self.harness.add_relation('database', 'mysql')
-        self.harness.add_relation_unit(rid, 'mysql/0')
-        self.harness.update_relation_data(
-            rid, "mysql/0", {"ingress-address": "10.0.0.33"}
-        )
+    @patch('charmhelpers.core.host.mkdir')
+    @patch('charmhelpers.core.host.write_file')
+    def test_database_relation(self, _write_file, _mkdir):
+        # add database relation
+        test_utils.add_complete_database_relation(self.harness)
+
+        # check rendered content
+        expect_entries = [
+            'mysql+pymysql://dbuser:strongpass@juju-unit-1:3306/cloudkitty'
+        ]
+
+        content = self.harness.charm._render_config()
+        for entry in expect_entries:
+            self.assertIn(entry, content)

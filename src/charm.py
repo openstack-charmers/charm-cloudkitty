@@ -12,7 +12,7 @@ import logging
 
 from pathlib import Path
 
-import ops_openstack.core
+from ops_openstack.core import OSBaseCharm
 
 from ops.framework import StoredState
 from ops.main import main
@@ -39,7 +39,7 @@ from charms.operator_libs_linux.v1.systemd import (
 logger = logging.getLogger(__name__)
 
 
-class CloudkittyCharm(ops_openstack.core.OSBaseCharm):
+class CloudkittyCharm(OSBaseCharm):
     """Charm the service."""
     _stored = StoredState()
 
@@ -70,6 +70,8 @@ class CloudkittyCharm(ops_openstack.core.OSBaseCharm):
 
         self._address = None
         self._database_name = 'cloudkitty'
+
+        self._stored.is_started = True
 
         self.identity_service = KeystoneRequires(
             charm=self,
@@ -120,8 +122,8 @@ class CloudkittyCharm(ops_openstack.core.OSBaseCharm):
     def status_check(self):
         return ActiveStatus()
 
-    def _render_config(self):
-        templating.render(
+    def _render_config(self) -> str:
+        return templating.render(
             source=self.CONFIG_FILE,
             template_loader=os_templating.get_loader(
                 'templates/',
@@ -137,18 +139,18 @@ class CloudkittyCharm(ops_openstack.core.OSBaseCharm):
             group=self.CONFIG_FILE_GROUP,
             perms=0o640
         )
-        self._stored.is_started = True
-        self.update_status()
 
     def _on_config_changed(self, _):
-        # import ripdb; ripdb.set_trace()
         self._render_config()
+        self.update_status()
 
     def _on_identity_service_ready(self, _):
         self._render_config()
+        self.update_status()
 
     def _on_database_created(self, _):
         self._render_config()
+        self.update_status()
 
     def _on_restart_services_action(self, event):
         event.log(f"restarting services {', '.join(self.SERVICES)}")
