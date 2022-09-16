@@ -1,23 +1,19 @@
-# Copyright 2022 Billy Olsen
-# See LICENSE file for licensing details.
-
-# For a complete list of supported options, see:
-# https://juju.is/docs/sdk/metadata-reference
-name: charm-cloudkitty
-display-name: |
-  TEMPLATE-TODO: fill out a display name for the Charmcraft store
+name: cloudkitty
+maintainer: OpenStack Charmers <openstack-charmers@lists.ubuntu.com>
+display-name: Cloudkitty
+summary: Rating as a Service add-on for Openstack
 description: |
-  TEMPLATE-TODO: fill out the charm's description
-summary: |
-  TEMPLATE-TODO: fill out the charm's summary
+  Rating as a Service add-on for Openstack.
 
-# TEMPLATE-TODO: replace with containers for your workload (delete for non-k8s)
-containers:
-  httpbin:
-    resource: httpbin-image
+tags:
+  - openstack
+series:
+  - jammy
+extra-bindings:
+  public:
 
-# TEMPLATE-TODO: each container defined above must specify an oci-image resource
-resources:
-  httpbin-image:
-    type: oci-image
-    description: OCI image for httpbin (kennethreitz/httpbin)
+requires:
+  identity-service:
+    interface: keystone
+  database:
+    interface: mysql_client

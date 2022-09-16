@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-# Copyright 2022 Billy Olsen
-# See LICENSE file for licensing details.
-#
-# Learn more at: https://juju.is/docs/sdk
 
 """Charm the service.
 
@@ -14,91 +10,154 @@ develop a new k8s charm using the Operator Framework:
 
 import logging
 
-from ops.charm import CharmBase
+from pathlib import Path
+
+from ops_openstack.core import OSBaseCharm
+
 from ops.framework import StoredState
 from ops.main import main
-from ops.model import ActiveStatus
+
+from ops.model import (
+    ActiveStatus
+)
+
+from charmhelpers.core import templating
+from charmhelpers.contrib.openstack import templating as os_templating
+
+from charms.openstack_libs.v0.keystone_requires import (
+    KeystoneRequires
+)
+
+from charms.data_platform_libs.v0.database_requires import (
+    DatabaseRequires
+)
+
+from charms.operator_libs_linux.v1.systemd import (
+    service_restart
+)
 
 logger = logging.getLogger(__name__)
 
 
-class CharmCloudkittyCharm(CharmBase):
+class CloudkittyCharm(OSBaseCharm):
     """Charm the service."""
-
     _stored = StoredState()
 
-    def __init__(self, *args):
-        super().__init__(*args)
-        self.framework.observe(self.on.httpbin_pebble_ready, self._on_httpbin_pebble_ready)
-        self.framework.observe(self.on.config_changed, self._on_config_changed)
-        self.framework.observe(self.on.fortune_action, self._on_fortune_action)
-        self._stored.set_default(things=[])
+    PACKAGES = [
+        'cloudkitty-api',
+        'cloudkitty-processor',
+        'cloudkitty-common',
+        'python3-cloudkitty'
+    ]
 
-    def _on_httpbin_pebble_ready(self, event):
-        """Define and start a workload using the Pebble API.
+    REQUIRED_RELATIONS = ['database', 'identity-service']
 
-        TEMPLATE-TODO: change this example to suit your needs.
-        You'll need to specify the right entrypoint and environment
-        configuration for your specific workload. Tip: you can see the
-        standard entrypoint of an existing container using docker inspect
+    CONFIG_FILE_OWNER = 'cloudkitty'
+    CONFIG_FILE_GROUP = 'cloudkitty'
+    CONFIG_DIR = Path('/etc/cloudkitty')
+    CONFIG_FILE = 'cloudkitty.conf'
 
-        Learn more about Pebble layers at https://github.com/canonical/pebble
-        """
-        # Get a reference the container attribute on the PebbleReadyEvent
-        container = event.workload
-        # Define an initial Pebble layer configuration
-        pebble_layer = {
-            "summary": "httpbin layer",
-            "description": "pebble config layer for httpbin",
-            "services": {
-                "httpbin": {
-                    "override": "replace",
-                    "summary": "httpbin",
-                    "command": "gunicorn -b 0.0.0.0:80 httpbin:app -k gevent",
-                    "startup": "enabled",
-                    "environment": {"thing": self.model.config["thing"]},
-                }
+    SERVICES = ['cloudkitty-api', 'cloudkitty-processor']
+    RESTART_MAP = {
+        str(CONFIG_FILE): SERVICES
+    }
+
+    release = 'yoga'
+
+    def __init__(self, framework):
+        super().__init__(framework)
+        super().register_status_check(self.status_check)
+
+        self._address = None
+        self._database_name = 'cloudkitty'
+
+        self._stored.is_started = True
+
+        self.identity_service = KeystoneRequires(
+            charm=self,
+            relation_name='identity-service',
+            service_endpoints=[{
+                'service_name': 'cloudkitty',
+                'internal_url': self.service_url('internal'),
+                'public_url': self.service_url('public'),
+                'admin_url': self.service_url('public')
+            }],
+            region=self.model.config['region']
+        )
+
+        self.database = DatabaseRequires(
+            charm=self,
+            relation_name='database',
+            database_name=self._database_name
+        )
+
+        self.framework.observe(self.on.config_changed,
+                               self._on_config_changed)
+        self.framework.observe(self.identity_service.on.ready,
+                               self._on_identity_service_ready)
+        self.framework.observe(self.database.on.database_created,
+                               self._on_database_created)
+        self.framework.observe(self.on.restart_services_action,
+                               self._on_restart_services_action)
+
+    @property
+    def protocol(self):
+        return 'http'
+
+    @property
+    def host(self) -> str:
+        if self._address is None:
+            binding = self.model.get_binding('public')
+            self._address = binding.network.bind_address
+        return str(self._address)
+
+    @property
+    def port(self) -> int:
+        return 8889
+
+    def service_url(self, _) -> str:
+        return f'{self.protocol}://{self.host}:{self.port}'
+
+    # Event handlers
+    def status_check(self):
+        return ActiveStatus()
+
+    def _render_config(self) -> str:
+        return templating.render(
+            source=self.CONFIG_FILE,
+            template_loader=os_templating.get_loader(
+                'templates/',
+                self.release
+            ),
+            target=self.CONFIG_DIR / self.CONFIG_FILE,
+            context={
+                'options': self.model.config,
+                'identity_service': self.identity_service,
+                'databases': self.database.fetch_relation_data(),
             },
-        }
-        # Add initial Pebble config layer using the Pebble API
-        container.add_layer("httpbin", pebble_layer, combine=True)
-        # Autostart any services that were defined with startup: enabled
-        container.autostart()
-        # Learn more about statuses in the SDK docs:
-        # https://juju.is/docs/sdk/constructs#heading--statuses
-        self.unit.status = ActiveStatus()
+            owner=self.CONFIG_FILE_OWNER,
+            group=self.CONFIG_FILE_GROUP,
+            perms=0o640
+        )
 
     def _on_config_changed(self, _):
-        """Just an example to show how to deal with changed configuration.
+        self._render_config()
+        self.update_status()
 
-        TEMPLATE-TODO: change this example to suit your needs.
-        If you don't need to handle config, you can remove this method,
-        the hook created in __init__.py for it, the corresponding test,
-        and the config.py file.
+    def _on_identity_service_ready(self, _):
+        self._render_config()
+        self.update_status()
 
-        Learn more about config at https://juju.is/docs/sdk/config
-        """
-        current = self.config["thing"]
-        if current not in self._stored.things:
-            logger.debug("found a new thing: %r", current)
-            self._stored.things.append(current)
+    def _on_database_created(self, _):
+        self._render_config()
+        self.update_status()
 
-    def _on_fortune_action(self, event):
-        """Just an example to show how to receive actions.
-
-        TEMPLATE-TODO: change this example to suit your needs.
-        If you don't need to handle actions, you can remove this method,
-        the hook created in __init__.py for it, the corresponding test,
-        and the actions.py file.
-
-        Learn more about actions at https://juju.is/docs/sdk/actions
-        """
-        fail = event.params["fail"]
-        if fail:
-            event.fail(fail)
-        else:
-            event.set_results({"fortune": "A bug in the code is worth two in the documentation."})
+    def _on_restart_services_action(self, event):
+        event.log(f"restarting services {', '.join(self.SERVICES)}")
+        for service in self.SERVICES:
+            if service_restart(service):
+                event.fail(f"Failed to restart service: {service}")
 
 
 if __name__ == "__main__":
-    main(CharmCloudkittyCharm)
+    main(CloudkittyCharm)

@@ -1,0 +1,28 @@
+charm_name: charm-cloudkitty
+
+smoke_bundles:
+- jammy-yoga
+
+gate_bundles:
+- jammy-yoga
+
+dev_bundles:
+- jammy-yoga
+
+configure:
+- zaza.openstack.charm_tests.keystone.setup.add_demo_user
+
+tests:
+- zaza.openstack.charm_tests.keystone.tests.AuthenticationAuthorizationTest
+
+target_deploy_status:
+  cloudkitty:
+    num-expected-units: 1
+    workload-status: active
+  mysql:
+    num-expected-units: 3
+    workload-status: active
+    workload-status-message-prefix: ''
+
+tests_options:
+  force_deploy: []
