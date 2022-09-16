@@ -40,6 +40,14 @@ class TestCharm(unittest.TestCase):
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
+    @patch('charmhelpers.core.host.mkdir')
+    @patch('charmhelpers.core.host.write_file')
+    def assertContent(self, expected_entries, _write_file, _mkdir):
+        # check rendered content
+        content = self.harness.charm._render_config()
+        for entry in expected_entries:
+            self.assertIn(entry, content)
+
     @patch('ops_openstack.core.apt_update')
     @patch('ops_openstack.core.apt_install')
     def test_on_install(self, _install, _update):
@@ -47,24 +55,19 @@ class TestCharm(unittest.TestCase):
         _update.assert_called_with(fatal=True)
         _install.assert_called_with(TestCloudkittyCharm.PACKAGES, fatal=True)
 
-    @patch('charmhelpers.core.host.mkdir')
-    @patch('charmhelpers.core.host.write_file')
-    def test_config_changed(self, _write_file, _mkdir):
+    def test_config_changed(self):
         # change application config
         self.harness.update_config({'debug': True})
 
         # check rendered content
-        content = self.harness.charm._render_config()
-        self.assertIn('debug = True', content)
+        self.assertContent(['debug = True'])
 
-    @patch('charmhelpers.core.host.mkdir')
-    @patch('charmhelpers.core.host.write_file')
-    def test_identity_service_relation(self, _write_file, _mkdir):
+    def test_identity_service_relation(self):
         # add identity-service relation
         test_utils.add_complete_identity_relation(self.harness)
 
         # check rendered content
-        expect_entries = [
+        expected_entries = [
             'auth_protocol = http',
             'auth_uri = http://keystone.local:5000/v3',
             'auth_url = http://keystone.local:12345/v3',
@@ -76,22 +79,15 @@ class TestCharm(unittest.TestCase):
             'password = svcpass1',
             'region_name = RegionOne'
         ]
+        self.assertContent(expected_entries)
 
-        content = self.harness.charm._render_config()
-        for entry in expect_entries:
-            self.assertIn(entry, content)
-
-    @patch('charmhelpers.core.host.mkdir')
-    @patch('charmhelpers.core.host.write_file')
-    def test_database_relation(self, _write_file, _mkdir):
+    def test_database_relation(self):
         # add database relation
         test_utils.add_complete_database_relation(self.harness)
 
         # check rendered content
-        expect_entries = [
+        expected_entries = [
             'mysql+pymysql://dbuser:strongpass@juju-unit-1:3306/cloudkitty'
         ]
 
-        content = self.harness.charm._render_config()
-        for entry in expect_entries:
-            self.assertIn(entry, content)
+        self.assertContent(expected_entries)
