@@ -44,7 +44,7 @@ class TestCharm(unittest.TestCase):
     @patch('charmhelpers.core.host.write_file')
     def assertContent(self, expected_entries, _write_file, _mkdir):
         # check rendered content
-        content = self.harness.charm._render_config()
+        content = self.harness.charm._render_config('An event')
         for entry in expected_entries:
             self.assertIn(entry, content)
 

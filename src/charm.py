@@ -9,6 +9,7 @@ develop a new k8s charm using the Operator Framework:
 """
 
 import logging
+import subprocess
 
 from pathlib import Path
 
@@ -28,6 +29,10 @@ from charms.openstack_libs.v0.keystone_requires import (
     KeystoneRequires
 )
 
+from charms.openstack_libs.v0.gnocchi_requires import (
+    GnocchiRequires
+)
+
 from charms.data_platform_libs.v0.database_requires import (
     DatabaseRequires
 )
@@ -45,12 +50,10 @@ class CloudkittyCharm(OSBaseCharm):
 
     PACKAGES = [
         'cloudkitty-api',
-        'cloudkitty-processor',
-        'cloudkitty-common',
-        'python3-cloudkitty'
+        'cloudkitty-processor'
     ]
 
-    REQUIRED_RELATIONS = ['database', 'identity-service']
+    REQUIRED_RELATIONS = ['database', 'identity-service', 'metric-service']
 
     CONFIG_FILE_OWNER = 'cloudkitty'
     CONFIG_FILE_GROUP = 'cloudkitty'
@@ -85,6 +88,11 @@ class CloudkittyCharm(OSBaseCharm):
             region=self.model.config['region']
         )
 
+        self.metric_service = GnocchiRequires(
+            charm=self,
+            relation_name='metric-service'
+        )
+
         self.database = DatabaseRequires(
             charm=self,
             relation_name='database',
@@ -95,6 +103,8 @@ class CloudkittyCharm(OSBaseCharm):
                                self._on_config_changed)
         self.framework.observe(self.identity_service.on.ready,
                                self._on_identity_service_ready)
+        self.framework.observe(self.metric_service.on.ready,
+                               self._on_metric_service_ready)
         self.framework.observe(self.database.on.database_created,
                                self._on_database_created)
         self.framework.observe(self.on.restart_services_action,
@@ -118,11 +128,10 @@ class CloudkittyCharm(OSBaseCharm):
     def service_url(self, _) -> str:
         return f'{self.protocol}://{self.host}:{self.port}'
 
-    # Event handlers
     def status_check(self):
         return ActiveStatus()
 
-    def _render_config(self) -> str:
+    def _render_config(self, _) -> str:
         return templating.render(
             source=self.CONFIG_FILE,
             template_loader=os_templating.get_loader(
@@ -133,6 +142,7 @@ class CloudkittyCharm(OSBaseCharm):
             context={
                 'options': self.model.config,
                 'identity_service': self.identity_service,
+                'metric_service': self.metric_service,
                 'databases': self.database.fetch_relation_data(),
             },
             owner=self.CONFIG_FILE_OWNER,
@@ -140,16 +150,28 @@ class CloudkittyCharm(OSBaseCharm):
             perms=0o640
         )
 
-    def _on_config_changed(self, _):
-        self._render_config()
+    def migrate_database(self):
+        for cmd in [
+            ['cloudkitty-storage-init'],
+            ['cloudkitty-dbsync', 'upgrade']]:
+            subprocess.run(cmd , capture_output=True)
+
+    # Event handlers
+    def _on_config_changed(self, event):
+        self._render_config(event)
         self.update_status()
 
-    def _on_identity_service_ready(self, _):
-        self._render_config()
+    def _on_identity_service_ready(self, event):
+        self._render_config(event)
         self.update_status()
 
-    def _on_database_created(self, _):
-        self._render_config()
+    def _on_metric_service_ready(self, event):
+        self._render_config(event)
+        self.update_status()
+
+    def _on_database_created(self, event):
+        self._render_config(event)
+        self.migrate_database()
         self.update_status()
 
     def _on_restart_services_action(self, event):

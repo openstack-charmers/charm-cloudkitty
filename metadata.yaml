@@ -17,3 +17,5 @@ requires:
     interface: keystone
   database:
     interface: mysql_client
+  metric-service:
+    interface: gnocchi
