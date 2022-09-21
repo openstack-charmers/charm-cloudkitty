@@ -63,8 +63,6 @@ class TestCharm(unittest.TestCase):
         self.harness.update_config({'debug': True})
 
         # check rendered content
-        content = self.harness.charm._render_config(Mock())
-        self.assertIn('debug = True', content)
         self.assertContent(['debug = True'])
 
     def test_identity_service_relation(self):
