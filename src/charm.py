@@ -208,31 +208,39 @@ class CloudkittyCharm(OSBaseCharm):
             subprocess.check_call(cmd)
 
     def _on_config_changed(self, event):
+        """ Handle config changed event.
+        """
         self._render_config(event)
         self.update_status()
 
     def _on_identity_service_ready(self, event):
+        """ Handle identity-service relation ready event.
+        """
         self._render_config(event)
         self.update_status()
 
     def _on_metric_service_ready(self, event):
+        """ Handle metric-service relation ready event.
+        """
         self._render_config(event)
         self.update_status()
 
     def _on_database_created(self, event):
-        """ Handle Database created event
+        """ Handle Database created event.
         """
         self._render_config(event)
         self._bootstrap_db()
         self.update_status()
 
     def _on_amqp_ready(self, event):
-        """ Handle RabbitMQ relation ready event
+        """ Handle RabbitMQ relation ready event.
         """
         self._render_config(event)
         self.update_status()
 
     def _on_restart_services_action(self, event):
+        """ Restart cloudkitty services action.
+        """
         event.log(f"restarting services {', '.join(self.SERVICES)}")
         for service in self.SERVICES:
             if service_restart(service):
