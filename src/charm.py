@@ -28,6 +28,10 @@ from charms.openstack_libs.v0.keystone_requires import (
     KeystoneRequires
 )
 
+from charms.openstack_libs.v0.gnocchi_requires import (
+    GnocchiRequires
+)
+
 from charms.data_platform_libs.v0.database_requires import (
     DatabaseRequires
 )
@@ -50,7 +54,7 @@ class CloudkittyCharm(OSBaseCharm):
         'python3-cloudkitty'
     ]
 
-    REQUIRED_RELATIONS = ['database', 'identity-service']
+    REQUIRED_RELATIONS = ['database', 'identity-service', 'metric-service']
 
     CONFIG_FILE_OWNER = 'cloudkitty'
     CONFIG_FILE_GROUP = 'cloudkitty'
@@ -85,6 +89,11 @@ class CloudkittyCharm(OSBaseCharm):
             region=self.model.config['region']
         )
 
+        self.metric_service = GnocchiRequires(
+            charm=self,
+            relation_name='metric-service'
+        )
+
         self.database = DatabaseRequires(
             charm=self,
             relation_name='database',
@@ -95,6 +104,8 @@ class CloudkittyCharm(OSBaseCharm):
                                self._on_config_changed)
         self.framework.observe(self.identity_service.on.ready,
                                self._on_identity_service_ready)
+        self.framework.observe(self.metric_service.on.ready,
+                               self._on_metric_service_ready)
         self.framework.observe(self.database.on.database_created,
                                self._on_database_created)
         self.framework.observe(self.on.restart_services_action,
@@ -133,6 +144,7 @@ class CloudkittyCharm(OSBaseCharm):
             context={
                 'options': self.model.config,
                 'identity_service': self.identity_service,
+                'metric_service': self.metric_service,
                 'databases': self.database.fetch_relation_data(),
             },
             owner=self.CONFIG_FILE_OWNER,
@@ -144,8 +156,8 @@ class CloudkittyCharm(OSBaseCharm):
         self._render_config()
         self.update_status()
 
-    def _on_identity_service_ready(self, _):
-        self._render_config()
+    def _on_metric_service_ready(self, event):
+        self._render_config(event)
         self.update_status()
 
     def _on_database_created(self, _):
