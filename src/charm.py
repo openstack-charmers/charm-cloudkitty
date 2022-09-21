@@ -9,6 +9,7 @@ develop a new k8s charm using the Operator Framework:
 """
 
 import logging
+import subprocess
 
 from pathlib import Path
 
@@ -140,6 +141,16 @@ class CloudkittyCharm(OSBaseCharm):
             perms=0o640
         )
 
+    def migrate_database(self):
+        logger.info('starting cloudkitty db migration')
+        for cmd in [
+            ['cloudkitty-storage-init'],
+            ['cloudkitty-dbsync', 'upgrade']]:
+            logger.info(f"executing {cmd} command")
+            # if command fails it'll return a non-zero value
+            # and unit falls into error state
+            subprocess.run(cmd , capture_output=True)
+
     def _on_config_changed(self, _):
         self._render_config()
         self.update_status()
@@ -148,8 +159,9 @@ class CloudkittyCharm(OSBaseCharm):
         self._render_config()
         self.update_status()
 
-    def _on_database_created(self, _):
-        self._render_config()
+    def _on_database_created(self, event):
+        self._render_config(event)
+        self.migrate_database()
         self.update_status()
 
     def _on_restart_services_action(self, event):
