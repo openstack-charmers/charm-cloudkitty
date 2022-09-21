@@ -6,8 +6,9 @@
 
 import sys
 
-sys.path.append('lib')  # noqa
-sys.path.append('src')  # noqa
+sys.path.append('lib')
+sys.path.append('src')
+sys.path.append('unit_tests')
 
 import charm
 import unittest
