@@ -54,9 +54,7 @@ class CloudkittyCharm(OSBaseCharm):
 
     PACKAGES = [
         'cloudkitty-api',
-        'cloudkitty-processor',
-        'cloudkitty-common',
-        'python3-cloudkitty'
+        'cloudkitty-processor'
     ]
 
     REQUIRED_RELATIONS = [
@@ -150,7 +148,6 @@ class CloudkittyCharm(OSBaseCharm):
     def service_url(self, _) -> str:
         return f'{self.protocol}://{self.host}:{self.port}'
 
-    # Event handlers
     def status_check(self):
         return ActiveStatus()
 
