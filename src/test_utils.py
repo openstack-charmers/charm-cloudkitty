@@ -103,3 +103,35 @@ def add_complete_database_relation(harness: Harness) -> None:
         harness,
         rel_id)
     return rel_id
+
+
+def add_base_metric_service_relation(harness: Harness) -> int:
+    """Add metric-service relation."""
+    rel_id = harness.add_relation("metric-service", "gnocchi")
+    harness.add_relation_unit(rel_id, "gnocchi/0")
+    harness.update_relation_data(
+        rel_id, "gnocchi/0", {
+            "egress-subnets": "10.0.0.1/32",
+            "ingress-address": "10.0.0.1",
+            "private-address": "10.0.0.1",
+        }
+    )
+    return rel_id
+
+
+def add_metric_service_relation_response(
+    harness: Harness, rel_id: str
+) -> None:
+    """Add gnocchi data to metric-service relation."""
+    harness.update_relation_data(
+        rel_id, "gnocchi/0", {
+            "gnocchi_url": "http://10.0.0.1:8041",
+        }
+    )
+
+
+def add_complete_metric_relation(harness: Harness) -> int:
+    """Add complete metric-service relation."""
+    rel_id = add_base_metric_service_relation(harness)
+    add_metric_service_relation_response(harness, rel_id)
+    return rel_id

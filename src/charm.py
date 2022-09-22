@@ -156,6 +156,10 @@ class CloudkittyCharm(OSBaseCharm):
         self._render_config()
         self.update_status()
 
+    def _on_identity_service_ready(self, event):
+        self._render_config(event)
+        self.update_status()
+
     def _on_metric_service_ready(self, event):
         self._render_config(event)
         self.update_status()
