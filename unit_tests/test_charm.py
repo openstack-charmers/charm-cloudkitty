@@ -14,7 +14,8 @@ import unittest
 import test_utils
 
 from unittest.mock import (
-    patch
+    patch,
+    call
 )
 from ops.testing import Harness
 
@@ -54,7 +55,7 @@ class TestCharm(unittest.TestCase):
         self.harness.update_config({'debug': True})
 
         # check rendered content
-        content = self.harness.charm._render_config()
+        content = self.harness.charm._render_config('An event')
         self.assertIn('debug = True', content)
 
     @patch('charmhelpers.core.host.mkdir')
@@ -77,7 +78,7 @@ class TestCharm(unittest.TestCase):
             'region_name = RegionOne'
         ]
 
-        content = self.harness.charm._render_config()
+        content = self.harness.charm._render_config('An event')
         for entry in expect_entries:
             self.assertIn(entry, content)
 
@@ -92,6 +93,22 @@ class TestCharm(unittest.TestCase):
             'mysql+pymysql://dbuser:strongpass@juju-unit-1:3306/cloudkitty'
         ]
 
-        content = self.harness.charm._render_config()
+        content = self.harness.charm._render_config('An event')
         for entry in expect_entries:
             self.assertIn(entry, content)
+
+    @patch('charmhelpers.core.host.mkdir')
+    @patch('charmhelpers.core.host.write_file')
+    @patch('subprocess.run')
+    def test_database_migration(self, _subprocess_run, _write_file, _mkdir):
+        # enable hooks
+        self.harness.enable_hooks()
+
+        # add database relation
+        test_utils.add_complete_database_relation(self.harness)
+
+        calls = [
+            call(['cloudkitty-storage-init'], capture_output=True),
+            call(['cloudkitty-dbsync', 'upgrade'], capture_output=True)
+        ]
+        _subprocess_run.assert_has_calls(calls, any_order=True)
