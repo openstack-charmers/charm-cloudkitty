@@ -95,3 +95,17 @@ class TestCharm(unittest.TestCase):
         content = self.harness.charm._render_config()
         for entry in expect_entries:
             self.assertIn(entry, content)
+
+    @patch('charmhelpers.core.host.mkdir')
+    @patch('charmhelpers.core.host.write_file')
+    def test_gnocchi_relation(self, _write_file, _mkdir):
+        test_utils.add_complete_metric_relation(self.harness)
+
+        # check rendered content
+        expect_entries = [
+            'gnocchi_endpoint = http://10.0.0.1:8041'
+        ]
+
+        content = self.harness.charm._render_config()
+        for entry in expect_entries:
+            self.assertIn(entry, content)
