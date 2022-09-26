@@ -1,4 +1,4 @@
-charm_name: charm-cloudkitty
+charm_name: cloudkitty
 
 smoke_bundles:
 - jammy-yoga
@@ -10,19 +10,36 @@ dev_bundles:
 - jammy-yoga
 
 configure:
-- zaza.openstack.charm_tests.keystone.setup.add_demo_user
+- zaza.openstack.charm_tests.vault.setup.auto_initialize
+- zaza.openstack.charm_tests.ceilometer.setup.basic_setup
+- zaza.openstack.charm_tests.neutron.setup.basic_overcloud_network
+- zaza.openstack.charm_tests.glance.setup.add_cirros_image
+- zaza.openstack.charm_tests.nova.setup.create_flavors
+- zaza.openstack.charm_tests.nova.setup.manage_ssh_key
 
 tests:
-- zaza.openstack.charm_tests.keystone.tests.AuthenticationAuthorizationTest
+- zaza.openstack.charm_tests.cloudkitty.tests.CloudkittyTest
 
 target_deploy_status:
-  cloudkitty:
+  mysql:
     num-expected-units: 1
     workload-status: active
-  mysql:
-    num-expected-units: 3
-    workload-status: active
-    workload-status-message-prefix: ''
+    workload-status-message-prefix: ""
+  ceilometer:
+    workload-status: blocked
+    workload-status-message-prefix: "Run the ceilometer-upgrade action on the leader to initialize ceilometer and gnocchi"
+  vault:
+    workload-status: blocked
+    workload-status-message-prefix: "Vault needs to be initialized"
+  ovn-central:
+    workload-status: waiting
+    workload-status-message-prefix: "'ovsdb-peer' incomplete, 'certificates' awaiting server certificate data"
+  ovn-chassis:
+    workload-status: waiting
+    workload-status-message-prefix: "'certificates' awaiting server certificate data, 'ovsdb' incomplete"
+  neutron-api-plugin-ovn:
+    workload-status: waiting
+    workload-status-message-prefix: "'certificates' awaiting server certificate data, 'ovsdb-cms' incomplete"
 
 tests_options:
   force_deploy: []
