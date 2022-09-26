@@ -19,3 +19,5 @@ requires:
     interface: mysql_client
   metric-service:
     interface: gnocchi
+  amqp:
+    interface: rabbitmq

@@ -33,6 +33,10 @@ from charms.openstack_libs.v0.gnocchi_requires import (
     GnocchiRequires
 )
 
+from charms.openstack_libs.v0.rabbitmq_requires import (
+    RabbitMQRequires
+)
+
 from charms.data_platform_libs.v0.database_requires import (
     DatabaseRequires
 )
@@ -55,7 +59,12 @@ class CloudkittyCharm(OSBaseCharm):
         'python3-cloudkitty'
     ]
 
-    REQUIRED_RELATIONS = ['database', 'identity-service', 'metric-service']
+    REQUIRED_RELATIONS = [
+        'database',
+        'identity-service',
+        'metric-service',
+        'amqp'
+    ]
 
     CONFIG_FILE_OWNER = 'cloudkitty'
     CONFIG_FILE_GROUP = 'cloudkitty'
@@ -64,7 +73,7 @@ class CloudkittyCharm(OSBaseCharm):
 
     SERVICES = ['cloudkitty-api', 'cloudkitty-processor']
     RESTART_MAP = {
-        str(CONFIG_FILE): SERVICES
+        CONFIG_DIR / CONFIG_FILE: SERVICES
     }
 
     release = 'yoga'
@@ -95,6 +104,13 @@ class CloudkittyCharm(OSBaseCharm):
             relation_name='metric-service'
         )
 
+        self.rabbitmq = RabbitMQRequires(
+            charm=self,
+            relation_name='amqp',
+            username='cloudkitty',
+            vhost='cloudkitty',
+        )
+
         self.database = DatabaseRequires(
             charm=self,
             relation_name='database',
@@ -109,6 +125,8 @@ class CloudkittyCharm(OSBaseCharm):
                                self._on_metric_service_ready)
         self.framework.observe(self.database.on.database_created,
                                self._on_database_created)
+        self.framework.observe(self.rabbitmq.on.ready,
+                               self._on_amqp_ready)
         self.framework.observe(self.on.restart_services_action,
                                self._on_restart_services_action)
 
@@ -147,6 +165,7 @@ class CloudkittyCharm(OSBaseCharm):
                 'identity_service': self.identity_service,
                 'metric_service': self.metric_service,
                 'databases': self.database.fetch_relation_data(),
+                'rabbitmq': self.rabbitmq,
             },
             owner=self.CONFIG_FILE_OWNER,
             group=self.CONFIG_FILE_GROUP,
@@ -195,6 +214,12 @@ class CloudkittyCharm(OSBaseCharm):
         """
         self._render_config(event)
         self._bootstrap_db()
+        self.update_status()
+
+    def _on_amqp_ready(self, event):
+        """ Handle RabbitMQ relation ready event
+        """
+        self._render_config(event)
         self.update_status()
 
     def _on_restart_services_action(self, event):

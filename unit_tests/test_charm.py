@@ -127,3 +127,20 @@ class TestCharm(unittest.TestCase):
         content = self.harness.charm._render_config(Mock())
         for entry in expect_entries:
             self.assertIn(entry, content)
+
+    @patch('charmhelpers.core.host.mkdir')
+    @patch('charmhelpers.core.host.write_file')
+    def test_rabbitmq_relation(self, _write_file, _mkdir):
+        test_utils.add_complete_rabbitmq_relation(self.harness)
+
+        # check rendered content
+        url = 'rabbit://cloudkitty:strong_password@10.0.0.1:5672/cloudkitty'
+        expect_entries = [
+            '[oslo_messaging_notifications]',
+            'driver = messagingv2',
+            'transport_url = ' + url,
+        ]
+
+        content = self.harness.charm._render_config(Mock())
+        for entry in expect_entries:
+            self.assertIn(entry, content)
