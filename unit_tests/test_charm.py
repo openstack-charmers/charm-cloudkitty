@@ -14,7 +14,9 @@ import unittest
 import test_utils
 
 from unittest.mock import (
-    patch
+    patch,
+    call,
+    Mock
 )
 from ops.testing import Harness
 
@@ -43,7 +45,7 @@ class TestCharm(unittest.TestCase):
     @patch('ops_openstack.core.apt_update')
     @patch('ops_openstack.core.apt_install')
     def test_on_install(self, _install, _update):
-        self.harness.charm.on_install('An event')
+        self.harness.charm.on_install(Mock())
         _update.assert_called_with(fatal=True)
         _install.assert_called_with(TestCloudkittyCharm.PACKAGES, fatal=True)
 
@@ -54,7 +56,7 @@ class TestCharm(unittest.TestCase):
         self.harness.update_config({'debug': True})
 
         # check rendered content
-        content = self.harness.charm._render_config()
+        content = self.harness.charm._render_config(Mock())
         self.assertIn('debug = True', content)
 
     @patch('charmhelpers.core.host.mkdir')
@@ -77,7 +79,7 @@ class TestCharm(unittest.TestCase):
             'region_name = RegionOne'
         ]
 
-        content = self.harness.charm._render_config()
+        content = self.harness.charm._render_config(Mock())
         for entry in expect_entries:
             self.assertIn(entry, content)
 
@@ -92,9 +94,25 @@ class TestCharm(unittest.TestCase):
             'mysql+pymysql://dbuser:strongpass@juju-unit-1:3306/cloudkitty'
         ]
 
-        content = self.harness.charm._render_config()
+        content = self.harness.charm._render_config(Mock())
         for entry in expect_entries:
             self.assertIn(entry, content)
+
+    @patch('charmhelpers.core.host.mkdir')
+    @patch('charmhelpers.core.host.write_file')
+    @patch('subprocess.check_call', autospec=True)
+    def test_database_migration(self, _check_call, _write_file, _mkdir):
+        # enable hooks
+        self.harness.enable_hooks()
+
+        # add database relation
+        test_utils.add_complete_database_relation(self.harness)
+
+        calls = [
+            call(['cloudkitty-storage-init']),
+            call(['cloudkitty-dbsync', 'upgrade'])
+        ]
+        _check_call.assert_has_calls(calls)
 
     @patch('charmhelpers.core.host.mkdir')
     @patch('charmhelpers.core.host.write_file')
@@ -106,6 +124,6 @@ class TestCharm(unittest.TestCase):
             'gnocchi_endpoint = http://10.0.0.1:8041'
         ]
 
-        content = self.harness.charm._render_config()
+        content = self.harness.charm._render_config(Mock())
         for entry in expect_entries:
             self.assertIn(entry, content)

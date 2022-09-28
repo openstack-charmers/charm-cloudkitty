@@ -9,6 +9,7 @@ develop a new k8s charm using the Operator Framework:
 """
 
 import logging
+import subprocess
 
 from pathlib import Path
 
@@ -133,7 +134,7 @@ class CloudkittyCharm(OSBaseCharm):
     def status_check(self):
         return ActiveStatus()
 
-    def _render_config(self) -> str:
+    def _render_config(self, _) -> str:
         return templating.render(
             source=self.CONFIG_FILE,
             template_loader=os_templating.get_loader(
@@ -152,8 +153,33 @@ class CloudkittyCharm(OSBaseCharm):
             perms=0o640
         )
 
-    def _on_config_changed(self, _):
-        self._render_config()
+    def _bootstrap_db(self):
+        """Bootstrap Database
+
+        On this function we handle the execution of
+        the storage initialization and then dbsync upgrade.
+        If any of the command fails it will return a non-zero
+        value and unit falls into error state.
+
+        This method is only executed on the leader unit.
+        """
+        if not self.model.unit.is_leader():
+            logger.info('unit is not leader, skipping bootstrap db')
+            return
+
+        logger.info('starting cloudkitty db migration')
+
+        commands = [
+            ['cloudkitty-storage-init'],
+            ['cloudkitty-dbsync', 'upgrade']
+        ]
+
+        for cmd in commands:
+            logger.info(f"executing {cmd} command")
+            subprocess.check_call(cmd)
+
+    def _on_config_changed(self, event):
+        self._render_config(event)
         self.update_status()
 
     def _on_identity_service_ready(self, event):
@@ -164,8 +190,11 @@ class CloudkittyCharm(OSBaseCharm):
         self._render_config(event)
         self.update_status()
 
-    def _on_database_created(self, _):
-        self._render_config()
+    def _on_database_created(self, event):
+        """ Handle Database created event
+        """
+        self._render_config(event)
+        self._bootstrap_db()
         self.update_status()
 
     def _on_restart_services_action(self, event):
