@@ -82,6 +82,8 @@ class CloudkittyCharm(OSBaseCharm):
         super().__init__(framework)
         super().register_status_check(self.status_check)
 
+        self.app_name = self.model.app.name
+
         self._address = None
         self._database_name = 'cloudkitty'
 
@@ -107,8 +109,8 @@ class CloudkittyCharm(OSBaseCharm):
         self.rabbitmq = RabbitMQRequires(
             charm=self,
             relation_name='amqp',
-            username='cloudkitty',
-            vhost='cloudkitty',
+            username=self.app_name,
+            vhost=self.app_name,
         )
 
         self.database = DatabaseRequires(
