@@ -97,11 +97,7 @@ class TestCharm(unittest.TestCase):
 
     @patch('subprocess.check_call', autospec=True)
     def test_database_migration(self, _check_call):
-        # enable hooks
-        self.harness.enable_hooks()
-
-        # add database relation
-        test_utils.add_complete_database_relation(self.harness)
+        self.harness.charm._bootstrap_db()
 
         calls = [
             call(['cloudkitty-storage-init']),
