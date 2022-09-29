@@ -23,6 +23,8 @@ from ops.model import (
 )
 
 from charmhelpers.core import templating
+from charmhelpers.core.host import restart_on_change
+
 from charmhelpers.contrib.openstack import templating as os_templating
 
 from charms.openstack_libs.v0.keystone_requires import (
@@ -54,9 +56,7 @@ class CloudkittyCharm(OSBaseCharm):
 
     PACKAGES = [
         'cloudkitty-api',
-        'cloudkitty-processor',
-        'cloudkitty-common',
-        'python3-cloudkitty'
+        'cloudkitty-processor'
     ]
 
     REQUIRED_RELATIONS = [
@@ -70,10 +70,11 @@ class CloudkittyCharm(OSBaseCharm):
     CONFIG_FILE_GROUP = 'cloudkitty'
     CONFIG_DIR = Path('/etc/cloudkitty')
     CONFIG_FILE = 'cloudkitty.conf'
+    CONFIG_PATH = CONFIG_DIR / CONFIG_FILE
 
     SERVICES = ['cloudkitty-api', 'cloudkitty-processor']
     RESTART_MAP = {
-        CONFIG_DIR / CONFIG_FILE: SERVICES
+        str(CONFIG_PATH): SERVICES
     }
 
     release = 'yoga'
@@ -82,10 +83,8 @@ class CloudkittyCharm(OSBaseCharm):
         super().__init__(framework)
         super().register_status_check(self.status_check)
 
-        self.app_name = self.model.app.name
-
+        self._app_name = self.model.app.name
         self._address = None
-        self._database_name = 'cloudkitty'
 
         self._stored.is_started = True
 
@@ -93,7 +92,7 @@ class CloudkittyCharm(OSBaseCharm):
             charm=self,
             relation_name='identity-service',
             service_endpoints=[{
-                'service_name': 'cloudkitty',
+                'service_name': self._app_name,
                 'internal_url': self.service_url('internal'),
                 'public_url': self.service_url('public'),
                 'admin_url': self.service_url('public')
@@ -109,14 +108,14 @@ class CloudkittyCharm(OSBaseCharm):
         self.rabbitmq = RabbitMQRequires(
             charm=self,
             relation_name='amqp',
-            username=self.app_name,
-            vhost=self.app_name,
+            username=self._app_name,
+            vhost=self._app_name,
         )
 
         self.database = DatabaseRequires(
             charm=self,
             relation_name='database',
-            database_name=self._database_name
+            database_name=self._app_name
         )
 
         self.framework.observe(self.on.config_changed,
@@ -150,25 +149,34 @@ class CloudkittyCharm(OSBaseCharm):
     def service_url(self, _) -> str:
         return f'{self.protocol}://{self.host}:{self.port}'
 
-    # Event handlers
     def status_check(self):
         return ActiveStatus()
 
+    @restart_on_change(RESTART_MAP)
     def _render_config(self, _) -> str:
+        """Render configuration
+
+        Render related services configuration into
+        cloudkitty configuration file
+        """
+        _template_loader = os_templating.get_loader(
+            'templates/',
+            self.release
+        )
+
+        _context = {
+            'options': self.model.config,
+            'identity_service': self.identity_service,
+            'metric_service': self.metric_service,
+            'databases': self.database.fetch_relation_data(),
+            'rabbitmq': self.rabbitmq,
+        }
+
         return templating.render(
             source=self.CONFIG_FILE,
-            template_loader=os_templating.get_loader(
-                'templates/',
-                self.release
-            ),
-            target=self.CONFIG_DIR / self.CONFIG_FILE,
-            context={
-                'options': self.model.config,
-                'identity_service': self.identity_service,
-                'metric_service': self.metric_service,
-                'databases': self.database.fetch_relation_data(),
-                'rabbitmq': self.rabbitmq,
-            },
+            target=self.CONFIG_PATH,
+            context=_context,
+            template_loader=_template_loader,
             owner=self.CONFIG_FILE_OWNER,
             group=self.CONFIG_FILE_GROUP,
             perms=0o640
