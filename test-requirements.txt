@@ -7,3 +7,4 @@ requests-mock
 ripdb
 git+https://github.com/openstack/charm-ops-sunbeam.git
 mock
+git+https://opendev.org/openstack/charm-ops-openstack@master#egg=ops_openstack
